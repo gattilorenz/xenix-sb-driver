@@ -13,6 +13,9 @@
  * Substantial changes by Pace Willisson, January 1992
  * Merge my assembler handler stuff into Pace's version, March 1992
  *	- Lance Norskog
+ *
+ * Updated for SCO Xenix by Lorenzo Gatti, August 2026 (programming by Claude)
+ *
  */
 
 /* Notes:
