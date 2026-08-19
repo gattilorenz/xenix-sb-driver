@@ -107,10 +107,10 @@ means `dsp_reset()` got its `0xAA` back: the board is present and
 responding. If it were absent, the driver would disable itself (`open`
 returns ENXIO) rather than hang.
 
-**If you have TCP/IP installed** you might need to give the root password and 
+~~**If you have TCP/IP installed** you might need to give the root password and 
 **boot in single-user/maintenance mode** to avoid a TCP-startup panic. This sporadically
 occured in my system even before the sb driver, so it's probably not the driver itself,
-but happens 100% of times with the driver installed.
+but happens 100% of times with the driver installed.~~ The kernel panic is now elusive. See what works for you...
 
 ### Testing once it boots
 
