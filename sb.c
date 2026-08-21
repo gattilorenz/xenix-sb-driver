@@ -13,9 +13,6 @@
  * Substantial changes by Pace Willisson, January 1992
  * Merge my assembler handler stuff into Pace's version, March 1992
  *	- Lance Norskog
- *
- * Updated for SCO Xenix by Lorenzo Gatti, August 2026 (programming by Claude)
- *
  */
 
 /* Notes:
@@ -1005,15 +1002,25 @@ static int
 midi_write_flush ()
 {
 	int i;
+	int s;
 
-	/* dsp_command does not sleep, so no other process
-	 * will try to do a flush at the same time
+	/* dsp_command does not sleep, so no other PROCESS will try to do
+	 * a flush at the same time -- but that alone does not protect
+	 * against sbintr() itself, which runs asynchronously and (with
+	 * /dev/sbdsp open from a second process) can call sb_start_dma()
+	 * at any point. Without spl5() here, one of this loop's MIDI
+	 * bytes can land in the middle of that 3-command DMA-restart
+	 * sequence, corrupting it -- see the comment in sb_start_dma().
 	 */
+	s = spl5 ();
 	for (i = 0; i < midi_out_used; i++) {
 		if (dsp_command (DSPCMD_MIDIOUT) == FALSE
-		    || dsp_command (midi_out_buf[i]) == FALSE)
+		    || dsp_command (midi_out_buf[i]) == FALSE) {
+			splx (s);
 			return (FALSE);
+		}
 	}
+	splx (s);
 
 	if (midi_out_used >= MIDI_OUT_CHUNK) {
 		midi_out_used = 0;
@@ -1191,6 +1198,23 @@ sb_start_dma (flag)
 int flag;
 {
 	int bsize = (flag == B_READ) ? DSP_BUF_SIZE : dsp_used[dsp_low];
+	int s;
+
+	/* Some callers (e.g. dsp_flush(), on the ioctl path sndserver
+	 * drives after every write) invoke this from user context without
+	 * their own spl5() around it. Without that, the SB interrupt can
+	 * fire mid-sequence -- either re-entering here from sbintr(), or
+	 * (with /dev/sbmidi open from a second process) landing inside
+	 * midi_write_flush()'s own dsp_command() loop -- and interleave
+	 * a stray byte into this 3-command sequence. The DSP chip then
+	 * never recognizes it as a valid "start transfer" command, never
+	 * raises the interrupt that would call this again, and DMA
+	 * playback goes silent for the rest of the session. Self-protect
+	 * here rather than trust every call site to remember to: spl5()
+	 * nests safely, so this is a no-op when already called from
+	 * sbintr() itself.
+	 */
+	s = spl5 ();
 
 	/* dma_param() writes the count to the 8237 verbatim, so the
 	 * caller passes (length - 1), same as the SoundBlaster itself.
@@ -1206,6 +1230,8 @@ int flag;
 	dsp_command ((flag == B_READ) ? DSPCMD_READ : DSPCMD_WRITE);
 	dsp_command (bsize - 1);
 	dsp_command ((bsize - 1) >> 8);
+
+	splx (s);
 
 	DPR(("dma %d\n", bsize));
 
